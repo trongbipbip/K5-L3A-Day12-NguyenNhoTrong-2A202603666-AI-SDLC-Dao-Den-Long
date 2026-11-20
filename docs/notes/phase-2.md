@@ -20,13 +20,12 @@
 - [x] Bùa Gió có thời lượng và hồi xuất hiện.
 - [x] Tuning Phase 1 được thay bằng số chuẩn Ticket-02.
 
-## Phần còn lại cần hoàn thiện trước khi chốt Phase 2
+## Trạng thái giao diện và còn lại
 
-- [ ] Giao diện WebGL cần menu chuỗi 3 Đêm, camera/địa hình riêng cho Đảo Cau và Đảo Chuông, cầu/bục/tầng/dốc theo bản đồ chuẩn.
-- [ ] Giao diện cần HUD đầy đủ của Ticket-02, pause menu, cài đặt lưu được và âm thanh theo danh sách yêu cầu.
+- [~] Giao diện WebGL đã có menu chọn 3 Đêm, HUD, pause/menu, cài đặt lưu được và âm thanh Web Audio; địa hình Đảo Cau/Đảo Chuông hiện là bản trình diễn giản lược, chưa mô hình hóa đủ cầu/bục/tầng/dốc theo từng tọa độ.
 - [ ] Cần đo FPS trung bình ở 1280×720 và lưu bằng chứng.
 
-Các mục trên chưa được đánh dấu đạt; headless contract và logic kiểm chứng là phần đã hoàn thành trong commit này.
+Headless contract và logic kiểm chứng đã hoàn thành; hai mục chưa đánh dấu đạt vẫn cần bằng chứng/triển khai trước khi chốt phase.
 
 ## Bằng chứng
 
