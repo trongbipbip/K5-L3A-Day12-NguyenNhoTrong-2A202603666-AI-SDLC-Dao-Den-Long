@@ -12,7 +12,7 @@ const vs=`attribute vec3 p;uniform mat4 mvp;uniform vec3 color;varying vec3 c;vo
 const fs=`precision mediump float;varying vec3 c;void main(){gl_FragColor=vec4(c,1.0);}`;
 function shader(t,s){const q=gl.createShader(t);gl.shaderSource(q,s);gl.compileShader(q);if(!gl.getShaderParameter(q,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(q));return q}
 const prog=gl.createProgram();gl.attachShader(prog,shader(gl.VERTEX_SHADER,vs));gl.attachShader(prog,shader(gl.FRAGMENT_SHADER,fs));gl.linkProgram(prog);gl.useProgram(prog);const P=gl.getAttribLocation(prog,'p'),M=gl.getUniformLocation(prog,'mvp'),C=gl.getUniformLocation(prog,'color');
-const verts=[-1,-1,-1,1,-1,-1,1,1,-1,-1,1,-1,-1,-1,1,1,-1,1,1,1,1,-1,1,1,-1,-1,-1,-1,1,-1,-1,1,1,-1,1,1,-1,-1,1,-1,1,1,1,1,1,1,-1,1,1,-1,-1,-1,-1,-1,1,-1,1,1,-1,1,-1,1,-1,-1,-1,1,-1,-1,1,1,-1,1,1,1,-1,1,1,-1,-1,1,-1,-1,1,1,-1,1,1,1,1,1,1,-1,1,1];
+const corners=[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]],indices=[0,1,2,0,2,3,4,6,5,4,7,6,0,4,5,0,5,1,3,2,6,3,6,7,0,3,7,0,7,4,1,5,6,1,6,2],verts=indices.flatMap(i=>corners[i]);
 const cube=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,cube);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(verts),gl.STATIC_DRAW);gl.enableVertexAttribArray(P);gl.vertexAttribPointer(P,3,gl.FLOAT,false,0,0);gl.enable(gl.DEPTH_TEST);
 function mul(a,b){let o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++)o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];return o}
 function perspective(f,a,n,z){let t=1/Math.tan(f/2),o=new Float32Array(16);o[0]=t/a;o[5]=t;o[10]=(z+n)/(n-z);o[11]=-1;o[14]=2*z*n/(n-z);return o}
