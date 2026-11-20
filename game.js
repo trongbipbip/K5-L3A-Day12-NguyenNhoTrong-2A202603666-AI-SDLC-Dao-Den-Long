@@ -3,154 +3,72 @@ const fs = require('fs');
 const path = require('path');
 
 const T = {
-  player_speed: 5, carry_capacity: 5, lantern_cost: 5, pickup_radius: 1.5,
-  interact_radius: 3, pulse_cost: 1, pulse_radius: 7, night1_duration_s: 300,
-  flames: 5, invuln_s: 1, hit_drop_ratio: 0.5, pulse_stun_s: 2,
-  pulse_push_m: 4, pulse_cooldown_s: 1, safe_radius: 4, shade_speed: 2.2,
-  shade_hit_radius: 1.2, score_per_mote: 10, score_per_lantern: 100,
-  score_per_stun: 5, score_per_second_left: 1, score_per_flame_left: 20,
-  island_radius: 30
+  player_speed: 6, jump_speed: 7, gravity: -20, dash_speed: 14, dash_duration_s: .2, dash_cooldown_s: 1.5,
+  carry_capacity: 10, pickup_radius: 1, pickup_height: 1.5, lantern_cost: 10, interact_radius: 2,
+  pulse_cost: 3, pulse_radius: 5, pulse_cooldown_s: 3, pulse_stun_ticks: 120, pulse_push_m: 4,
+  flames: 3, invuln_ticks: 90, hit_drop_ratio: .5, shade_speed: 4, shade_speed_night3: 4.5,
+  shade_detect: 12, shade_forget: 18, shade_hit_radius: 1, safe_radius: 6, fall_y: -10,
+  score_mote: 10, score_lantern: 100, score_stun: 5, score_time: 2, score_flame: 50,
+  tick_rate: 60
 };
-
-function fail(message, code = 2) { console.error(message); process.exitCode = code; throw new Error(message); }
-function clone(v) { return JSON.parse(JSON.stringify(v)); }
-function num(v, fallback) { return Number.isFinite(Number(v)) ? Number(v) : fallback; }
-function round3(v) { return Math.round(v * 1000) / 1000; }
-function pos3(p) { return [round3(p[0]), round3(p[1]), round3(p[2])]; }
-function dist(a, b) { const x = a[0] - b[0], z = a[2] - b[2]; return Math.hypot(x, z); }
-function normalize(x, z) { const n = Math.hypot(x, z); return n > 1 ? [x / n, z / n] : [x, z]; }
-
-class RNG {
-  constructor(seed) { this.s = (Number(seed) >>> 0) || 1; }
-  next() { this.s = (1664525 * this.s + 1013904223) >>> 0; return this.s / 4294967296; }
-}
-
-function defaults() {
-  const lanterns = [];
-  for (let i = 0; i < 5; i++) {
-    const a = -Math.PI / 2 + i * Math.PI * 2 / 5;
-    lanterns.push({ id: `L${i + 1}`, pos: [round3(Math.cos(a) * 20), 0, round3(Math.sin(a) * 20)], lit: false, deposited: 0 });
-  }
-  return {
-    player: { pos: [0, 0, 0], carried: 0, flames: T.flames },
-    motes: [[6, 0, 4], [-7, 0, 8], [10, 0, -8], [-12, 0, -6], [3, 0, -14], [14, 0, 4], [-16, 0, 10], [0, 0, 16], [8, 0, 13], [-8, 0, -15]],
-    shades: [{ id: 'S1', pos: [12, 0, 12], state: 'chase' }], lanterns,
-    time_left_s: T.night1_duration_s
-  };
-}
-
-function parseJsonFile(file, label) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch (e) { fail(`${label} is not valid JSON: ${e.message}`); }
-}
-
-function validateScenario(s) {
-  if (!s || typeof s !== 'object' || Array.isArray(s)) fail('scenario must be an object');
-  if (s.player && (!Array.isArray(s.player.pos) || s.player.pos.length !== 3)) fail('scenario.player.pos must have 3 numbers');
-  for (const key of ['motes', 'shades', 'lanterns']) if (s[key] !== undefined && !Array.isArray(s[key])) fail(`scenario.${key} must be an array`);
-  return s;
-}
-function validateInputs(i) {
-  if (!i || !Array.isArray(i.frames)) fail('inputs must contain a frames array');
-  let last = -1;
-  for (const f of i.frames) {
-    if (!Number.isInteger(f.tick) || f.tick <= last) fail('input frame ticks must increase strictly');
-    if (f.move && (!Array.isArray(f.move) || f.move.length !== 2 || f.move.some(v => Number(v) < -1 || Number(v) > 1))) fail('input move values must be in [-1,1]');
-    last = f.tick;
-  }
-  return i;
-}
+const NIGHTS = {
+  1: { duration: 300, radius: 40, lanterns: [[0,0,25],[23.8,0,7.7],[14.7,0,-20.2],[-14.7,0,-20.2],[-23.8,0,7.7]], motePoints: ring(12,8).concat(ring(33,16)), shadePoints: ring(37,12,Math.PI/12), shadeMax: 6, shadeEvery: 480, shadeFirst: 300, island: 'Đảo Bến' },
+  2: { duration: 330, radius: 28, lanterns: [[0,0,20],[17,0,-10],[-17,0,-10],[70,0,20],[87,0,-10],[53,0,-10]], motePoints: ring(10,4).concat(ring(22,8),ring(10,4,0,70),ring(22,8,0,70)), shadePoints: ring(26,8).concat(ring(26,8,0,70)), shadeMax: 8, shadeEvery: 420, shadeFirst: 420, island: 'Đảo Cau' },
+  3: { duration: 360, radius: 45, lanterns: [[0,6,6],[18,3,10],[-18,3,10],[35,0,-10],[-35,0,-10],[20,0,-35],[-20,0,-35]], motePoints: ring(34,18).concat(ring(18,8,Math.PI/9,0,3)).concat(ring(5,4,Math.PI/4,0,6)), shadePoints: ring(43,16), shadeMax: 10, shadeEvery: 360, shadeFirst: 360, island: 'Đảo Chuông' }
+};
+function ring(r,n,start=0,ox=0,oy=0){return Array.from({length:n},(_,i)=>[ox+Math.cos(start+i*Math.PI*2/n)*r,oy,Math.sin(start+i*Math.PI*2/n)*r]);}
+function clone(v){return JSON.parse(JSON.stringify(v));}
+function fail(s){console.error(s);process.exitCode=2;throw Error(s);}
+function number(v,d){return Number.isFinite(Number(v))?Number(v):d;}
+function r3(v){return Math.round(v*1000)/1000;}
+function p3(p){return [r3(p[0]),r3(p[1]),r3(p[2])];}
+function xz(a,b){return Math.hypot(a[0]-b[0],a[2]-b[2]);}
+function xyz(a,b){return Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);}
+function norm(x,z){const n=Math.hypot(x,z);return n>1?[x/n,z/n]:[x,z];}
+class RNG{constructor(seed){this.s=(Number(seed)>>>0)||1;}next(){this.s=(1664525*this.s+1013904223)>>>0;return this.s/4294967296;}}
+function parse(file,label){try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch(e){fail(`${label} is not valid JSON: ${e.message}`);}}
+function validateInputs(v){if(!v||!Array.isArray(v.frames))fail('inputs.frames must be an array');let last=-1;for(const f of v.frames){if(!Number.isInteger(f.tick)||f.tick<=last)fail('input ticks must increase strictly');if(f.move&&(!Array.isArray(f.move)||f.move.length!==2||f.move.some(x=>Number(x)<-1||Number(x)>1)))fail('move values must be in [-1,1]');last=f.tick;}return v;}
+function validateScenario(v){if(!v||typeof v!=='object'||Array.isArray(v))fail('scenario must be an object');return v;}
+function point(v){return Array.isArray(v)?[number(v[0],0),number(v[1],0),number(v[2],0)]:clone(v.pos||[0,0,0]);}
 
 class Game {
-  constructor(seed, scenario) {
-    const base = defaults();
-    const s = validateScenario(scenario || {});
-    this.rng = new RNG(seed);
-    this.tick = 0; this.state = 'playing'; this.score = 0; this.invuln = 0; this.pulseCooldown = 0;
-    this.player = { ...base.player, ...(s.player || {}), pos: clone((s.player && s.player.pos) || base.player.pos) };
-    this.player.carried = num(this.player.carried, 0); this.player.flames = num(this.player.flames, T.flames);
-    this.motes = clone(s.motes || base.motes).map((p, n) => ({ id: `M${n + 1}`, pos: clone(p), active: true }));
-    this.shades = clone(s.shades || base.shades).map((x, n) => ({ id: x.id || `S${n + 1}`, pos: clone(x.pos), state: x.state || 'chase', stun: 0 }));
-    this.lanterns = clone(base.lanterns);
-    for (const update of (s.lanterns || [])) { const l = this.lanterns.find(x => x.id === update.id); if (l) Object.assign(l, update); }
-    if (s.time_left_s !== undefined) this.timeLeft = num(s.time_left_s, T.night1_duration_s); else this.timeLeft = T.night1_duration_s;
-    this.events = [];
-    this.input = { move: [0, 0], cam_yaw_deg: 0, jump: false, interact: false, pulse: false };
+  constructor(seed,night,scenario={}){
+    if(!NIGHTS[night])fail('--night must be 1, 2 or 3');this.night=night;this.cfg=NIGHTS[night];this.rng=new RNG(seed);const s=validateScenario(scenario);
+    this.tick=0;this.simTick=0;this.paused=false;this.state='playing';this.score=0;this.totalScore=0;this.events=[];this.spawnShadeId=1;this.spawnDrifterId=1;this.spawnMoteId=1;this.spawnCharmId=1;this.wind={active:false,dir_deg:0,remaining:0};
+    const pp=s.player||{};this.player={pos:point(pp.pos||[0,0,0]),vel:[0,0,0],carried:number(pp.carried,0),flames:number(pp.flames,T.flames),grounded:true,invuln:number(pp.invuln_ticks,0),dashCd:number(pp.dash_cd_ticks,0),pulseCd:number(pp.pulse_cd_ticks,0),charm:number(pp.charm_ticks,0),dashTicks:0,recoil:0,respawn:0,face:[0,1]};
+    this.timeLeft=number(s.time_left_s,this.cfg.duration);this.timeTicks=Math.round(this.timeLeft*60);this.lanterns=this.cfg.lanterns.map((p,i)=>({id:`L${i+1}`,pos:clone(p),lit:false,deposited:0}));for(const u of s.lanterns||[]){const l=this.lanterns.find(x=>x.id===u.id);if(l)Object.assign(l,u);}
+    const rawMotes=s.motes!==undefined?s.motes:this.cfg.motePoints.slice(0,night===1?20:this.cfg.motePoints.length);this.motes=rawMotes.map((m,i)=>({id:m.id||`M${i+1}`,pos:point(m),kind:m.kind||'random',ttl: m.ttl_ticks??null,active:m.active!==false}));this.spawnMoteId=this.motes.length+1;
+    const rawShades=s.shades!==undefined?s.shades:[];this.shades=rawShades.map((q,i)=>({id:q.id||`S${i+1}`,pos:point(q),state:q.state||'wander',stateTicks:number(q.state_ticks_left,0),stun:number(q.stun_ticks,0),push:0,recoil:0}));this.spawnShadeId=this.shades.length+1;
+    this.drifters=(s.drifters||[]).map((d,i)=>({id:d.id||`D${i+1}`,pos:point(d),state:d.state||'idle',stolen:number(d.stolen,0),ticks:number(d.state_ticks_left,0),active:d.active!==false}));this.spawnDrifterId=this.drifters.length+1;
+    const defaultCharms=night===2?[{id:'C1',pos:[35,0,0]}]:night===3?[{id:'C1',pos:[30,0,25]},{id:'C2',pos:[-30,0,25]}]:[];this.charms=(s.charms!==undefined?s.charms:defaultCharms).map((c,i)=>({id:c.id||`C${i+1}`,pos:point(c),available:c.available!==false,respawn:number(c.respawn_ticks,0)}));this.randomMotes=s.random_motes!==false;this.randomShades=s.random_shades!==false;this.randomDrifters=s.random_drifters!==false;this.windEnabled=s.wind_enabled!==false;this.input={move:[0,0],cam_yaw_deg:0,jump:false,interact:false,pulse:false,dash:false,pause:false};this.prevInput={...this.input};this.emit('night_start',{night:this.night});
   }
-  emit(name, data) { this.events.push({ type: 'event', tick: this.tick, name, data }); }
-  litCount() { return this.lanterns.filter(l => l.lit).length; }
-  snapshot() {
-    return { type: 'snapshot', tick: this.tick, sim_tick: this.tick, state: this.state,
-      time_left_s: round3(this.timeLeft), score: this.score,
-      player: { pos: pos3(this.player.pos), flames: this.player.flames, carried: this.player.carried },
-      lanterns: this.lanterns.map(l => ({ id: l.id, pos: pos3(l.pos), lit: !!l.lit, deposited: l.deposited })),
-      shades: this.shades.map(s => ({ id: s.id, pos: pos3(s.pos), state: s.state })),
-      motes_active: this.motes.filter(m => m.active).length,
-      motes: this.motes.filter(m => m.active).map(m => ({ id: m.id, pos: pos3(m.pos) })) };
+  emit(name,data){this.events.push({type:'event',tick:this.tick,name,data});}
+  lit(){return this.lanterns.filter(x=>x.lit).length;}
+  snapshot(){return {type:'snapshot',tick:this.tick,sim_tick:this.simTick,night:this.night,state:this.paused?'paused':this.state,time_left_s:r3(this.timeTicks/60),score:this.score,wind:{active:this.wind.active,dir_deg:r3(this.wind.dir_deg)},player:{pos:p3(this.player.pos),vel:p3(this.player.vel),grounded:this.player.grounded,flames:this.player.flames,carried:this.player.carried,invuln:this.player.invuln,dash_cd_s:r3(this.player.dashCd/60),pulse_cd_s:r3(this.player.pulseCd/60),charm_s:r3(this.player.charm/60)},lanterns:this.lanterns.map(l=>({id:l.id,pos:p3(l.pos),lit:!!l.lit,deposited:l.deposited})),motes:this.motes.filter(m=>m.active).map(m=>({id:m.id,pos:p3(m.pos),kind:m.kind,ttl_s:m.ttl===null?null:r3(m.ttl/60)})),motes_active:this.motes.filter(m=>m.active).length,shades:this.shades.map(s=>({id:s.id,pos:p3(s.pos),state:s.state})),drifters:this.drifters.filter(d=>d.active).map(d=>({id:d.id,pos:p3(d.pos),state:d.state,stolen:d.stolen})),charms:this.charms.map(c=>({id:c.id,available:c.available,respawn_s:r3(c.respawn/60)}))};}
+  edge(k){return !!this.input[k]&&!this.prevInput[k];}
+  step(input){
+    this.prevInput=this.input;this.input={...this.input,...input};
+    if(this.edge('pause')){this.paused=!this.paused;this.emit(this.paused?'paused':'resumed',{});return;}
+    if(this.paused)return;
+    this.simTick++;
+    this.timeTicks=Math.max(0,this.timeTicks-1);if(this.wind.active&&!--this.wind.remaining)this.wind.active=false;for(const k of ['invuln','dashCd','pulseCd','charm'])this.player[k]=Math.max(0,this.player[k]-1);for(const s of this.shades){s.stun=Math.max(0,s.stun-1);s.stateTicks=Math.max(0,s.stateTicks-1);s.recoil=Math.max(0,s.recoil-1);}for(const d of this.drifters)d.ticks=Math.max(0,d.ticks-1);for(const m of this.motes)if(m.ttl!==null&&m.active){m.ttl--;if(m.ttl<=0)m.active=false;}for(const c of this.charms)if(!c.available&&c.respawn>0&&!--c.respawn)c.available=true;
+    this.movePlayer();this.pickups();this.interact();this.safeZones();this.pulse();this.moveShades();this.moveDrifters();this.collisions();this.spawn();this.checkEnd();
   }
-  update(input) {
-    if (this.state !== 'playing') return;
-    const wasInteract = this.input.interact, wasPulse = this.input.pulse;
-    this.input = { ...this.input, ...input };
-    const [mx, mz] = normalize(num(this.input.move[0], 0), num(this.input.move[1], 0));
-    const yaw = num(this.input.cam_yaw_deg, 0) * Math.PI / 180;
-    const wx = mx * Math.cos(yaw) + mz * Math.sin(yaw), wz = -mx * Math.sin(yaw) + mz * Math.cos(yaw);
-    this.player.pos[0] += wx * T.player_speed / 60; this.player.pos[2] += wz * T.player_speed / 60;
-    if (T.fall_enabled && Math.hypot(this.player.pos[0], this.player.pos[2]) > T.island_radius) {
-      this.player.pos[0] *= T.island_radius / Math.hypot(this.player.pos[0], this.player.pos[2]);
-      this.player.pos[2] *= T.island_radius / Math.hypot(this.player.pos[0], this.player.pos[2]);
-      if (this.invuln <= 0) this.hit('fall');
-    }
-    for (const m of this.motes) if (m.active && this.player.carried < T.carry_capacity && dist(this.player.pos, m.pos) <= T.pickup_radius) {
-      m.active = false; this.player.carried++; this.score += T.score_per_mote; this.emit('mote_picked', { carried: this.player.carried });
-    }
-    if (this.input.interact && !wasInteract) {
-      const l = this.lanterns.find(x => !x.lit && dist(this.player.pos, x.pos) <= T.interact_radius);
-      if (l && this.player.carried > 0) {
-        const amount = Math.min(this.player.carried, T.lantern_cost - l.deposited); l.deposited += amount; this.player.carried -= amount;
-        this.score += amount * T.score_per_mote; this.emit('deposit', { lantern_id: l.id, amount, deposited: l.deposited });
-        if (l.deposited >= T.lantern_cost) { l.lit = true; this.score += T.score_per_lantern; this.emit('lantern_lit', { lantern_id: l.id }); }
-      }
-    }
-    if (this.input.pulse && !wasPulse && this.player.flames >= T.pulse_cost && this.pulseCooldown <= 0) {
-      this.player.flames -= T.pulse_cost; this.pulseCooldown = T.pulse_cooldown_s;
-      const stunned_ids = [];
-      for (const s of this.shades) if (dist(this.player.pos, s.pos) <= T.pulse_radius) {
-        s.state = 'stunned'; s.stun = T.pulse_stun_s; const dx = s.pos[0] - this.player.pos[0], dz = s.pos[2] - this.player.pos[2], n = Math.hypot(dx, dz) || 1;
-        s.pos[0] += dx / n * T.pulse_push_m; s.pos[2] += dz / n * T.pulse_push_m; stunned_ids.push(s.id); this.score += T.score_per_stun;
-      }
-      this.emit('pulse', { stunned_ids });
-    }
-    this.pulseCooldown = Math.max(0, this.pulseCooldown - 1 / 60); this.invuln = Math.max(0, this.invuln - 1 / 60);
-    for (const s of this.shades) {
-      if (s.stun > 0) { s.stun -= 1 / 60; if (s.stun <= 0) s.state = 'chase'; continue; }
-      const dx = this.player.pos[0] - s.pos[0], dz = this.player.pos[2] - s.pos[2], n = Math.hypot(dx, dz) || 1;
-      const nearLit = this.lanterns.some(l => l.lit && dist(s.pos, l.pos) <= T.safe_radius);
-      if (!nearLit) { s.pos[0] += dx / n * T.shade_speed / 60; s.pos[2] += dz / n * T.shade_speed / 60; }
-      if (!nearLit && dist(this.player.pos, s.pos) <= T.shade_hit_radius && this.invuln <= 0) this.hit('shade');
-    }
-    this.timeLeft = Math.max(0, this.timeLeft - 1 / 60);
-    if (this.litCount() === 5) { this.state = 'won'; this.score += Math.floor(this.timeLeft) * T.score_per_second_left + this.player.flames * T.score_per_flame_left; this.emit('game_over', { result: 'won', reason: 'all_lit' }); }
-    else if (this.player.flames <= 0) { this.state = 'lost'; this.emit('game_over', { result: 'lost', reason: 'no_flames' }); }
-    else if (this.timeLeft <= 0) { this.state = 'lost'; this.emit('game_over', { result: 'lost', reason: 'dawn' }); }
-  }
-  hit(by) {
-    this.invuln = T.invuln_s; const dropped = Math.floor(this.player.carried * T.hit_drop_ratio); this.player.carried -= dropped; this.player.flames--;
-    this.emit('player_hit', { by, flames: this.player.flames, dropped });
-  }
+  movePlayer(){const p=this.player,dt=1/60;let [mx,mz]=norm(number(this.input.move[0],0),number(this.input.move[1],0));const yaw=number(this.input.cam_yaw_deg,0)*Math.PI/180;let dx=mx*Math.cos(yaw)+mz*Math.sin(yaw),dz=-mx*Math.sin(yaw)+mz*Math.cos(yaw);if(Math.hypot(dx,dz)>0){p.face=[dx,dz];}if(this.edge('jump')&&p.grounded){p.vel[1]=T.jump_speed;p.grounded=false;}if(this.edge('dash')&&p.dashCd<=0&&p.dashTicks<=0){let d=norm(p.face[0],p.face[1]);if(!d[0]&&!d[1])d=[0,1];p.face=d;p.dashTicks=Math.round(T.dash_duration_s*60);p.dashCd=Math.round(T.dash_cooldown_s*60);this.emit('dash',{});}if(p.dashTicks>0){p.dashTicks--;p.vel[0]=p.face[0]*T.dash_speed;p.vel[2]=p.face[1]*T.dash_speed;}else{const speed=p.charm>0?7.2:T.player_speed;p.vel[0]=dx*speed;p.vel[2]=dz*speed;}p.vel[1]+=T.gravity*dt;p.pos[0]+=p.vel[0]*dt;p.pos[1]+=p.vel[1]*dt;p.pos[2]+=p.vel[2]*dt;if(p.pos[1]<=0){p.pos[1]=0;p.vel[1]=0;p.grounded=true;}if(this.wind.active){const a=this.wind.dir_deg*Math.PI/180;p.pos[0]+=Math.cos(a)*2/60;p.pos[2]+=Math.sin(a)*2/60;}if(this.night===1&&Math.hypot(p.pos[0],p.pos[2])>40)p.pos[1]-=.3;if(p.pos[1]<T.fall_y)this.fall();}
+  fall(){const p=this.player;if(p.respawn||p.invuln&&p.pos[1]<T.fall_y)return;p.flames--;const lost=p.carried;p.carried=0;this.emit('player_hit',{by:'fall',flames:p.flames,lost});if(p.flames<=0){this.state='lost';this.emit('game_over',{result:'lost',reason:'no_flames'});return;}p.respawn=60;p.invuln=90;p.pos=[0,0,0];p.vel=[0,0,0];p.grounded=true;}
+  pickups(){const p=this.player;for(const m of this.motes){if(!m.active||p.carried>=T.carry_capacity||xz(p.pos,m.pos)>T.pickup_radius||Math.abs(p.pos[1]-m.pos[1])>T.pickup_height)continue;m.active=false;p.carried++;this.score+=T.score_mote;this.emit('mote_picked',{carried:p.carried});}for(const c of this.charms){if(!c.available||xz(p.pos,c.pos)>T.pickup_radius||Math.abs(p.pos[1]-c.pos[1])>T.pickup_height)continue;c.available=false;c.respawn=2700;p.charm=600;this.emit('charm_picked',{charm_id:c.id,charm_ticks:p.charm});}}
+  interact(){if(!this.edge('interact'))return;const p=this.player;const choices=this.lanterns.filter(l=>!l.lit&&xz(p.pos,l.pos)<=T.interact_radius).sort((a,b)=>xz(p.pos,a.pos)-xz(p.pos,b.pos)||a.id.localeCompare(b.id));const l=choices[0];if(!l||!p.carried)return;const amount=Math.min(p.carried,T.lantern_cost-l.deposited);l.deposited+=amount;p.carried-=amount;this.score+=amount*T.score_mote;this.emit('deposit',{lantern_id:l.id,amount,deposited:l.deposited});if(l.deposited>=T.lantern_cost){l.lit=true;this.score+=T.score_lantern;this.emit('lantern_lit',{lantern_id:l.id});}}
+  safeZones(){for(const s of this.shades){for(const l of this.lanterns.filter(x=>x.lit)){const d=xz(s.pos,l.pos);if(d<T.safe_radius){const dx=s.pos[0]-l.pos[0],dz=s.pos[2]-l.pos[2],n=Math.hypot(dx,dz)||1;s.pos[0]=l.pos[0]+dx/n*T.safe_radius;s.pos[2]=l.pos[2]+dz/n*T.safe_radius;}}}}
+  pulse(){if(!this.edge('pulse')||this.player.carried<T.pulse_cost||this.player.pulseCd>0)return;this.player.carried-=T.pulse_cost;this.player.pulseCd=180;const center=[this.player.pos[0],this.player.pos[1]+.8,this.player.pos[2]],ids=[];for(const s of this.shades){if(xyz(center,s.pos)<=T.pulse_radius){s.state='stunned';s.stun=T.pulse_stun_ticks;s.push=15;const dx=s.pos[0]-this.player.pos[0],dz=s.pos[2]-this.player.pos[2],n=Math.hypot(dx,dz)||1;s.pos[0]+=dx/n*T.pulse_push_m;s.pos[2]+=dz/n*T.pulse_push_m;ids.push(s.id);this.score+=T.score_stun;}}for(const d of this.drifters){if(!d.active||xz(d.pos,this.player.pos)>T.pulse_radius)continue;if(d.state==='chase')d.state='flee';else if(d.state==='flee'&&d.stolen){const amount=d.stolen;this.dropMotes(d.pos,amount,`R${d.id}`);d.stolen=0;d.state='removed';d.active=false;this.emit('drifter_drop',{drifter_id:d.id,amount});}}this.emit('pulse',{stunned_ids:ids});}
+  moveShades(){const p=this.player;for(const s of this.shades){if(s.state==='spawning'){if(s.stateTicks<=0)s.state='wander';continue;}if(s.state==='stunned'){continue;}if(s.recoil>0){s.recoil--;continue;}const d=xz(s.pos,p.pos),safe=this.lanterns.some(l=>l.lit&&xz(s.pos,l.pos)<=T.safe_radius);if(s.state==='wander'&&d<=T.shade_detect)s.state='chase';if(s.state==='chase'&&d>T.shade_forget)s.state='wander';if(safe)continue;const sp=this.night===3?T.shade_speed_night3:T.shade_speed;const dx=p.pos[0]-s.pos[0],dz=p.pos[2]-s.pos[2],n=Math.hypot(dx,dz)||1;s.pos[0]+=dx/n*sp/60;s.pos[2]+=dz/n*sp/60;}}
+  moveDrifters(){for(const d of this.drifters){if(!d.active)continue;const dx=this.player.pos[0]-d.pos[0],dz=this.player.pos[2]-d.pos[2],n=Math.hypot(dx,dz)||1;const near=Math.hypot(dx,dz);if(d.state==='idle'){if(this.player.carried>=5&&near<=15)d.state='chase';}else if(d.state==='chase'){d.pos[0]+=dx/n*7/60;d.pos[2]+=dz/n*7/60;}else if(d.state==='flee'){d.pos[0]-=dx/n*7/60;d.pos[2]-=dz/n*7/60;if(d.ticks<=0){d.active=false;d.state='removed';}}}}
+  collisions(){const p=this.player;for(const d of this.drifters.filter(x=>x.active&&x.state==='chase').sort((a,b)=>a.id.localeCompare(b.id))){if(xz(p.pos,d.pos)<=1.2){const amount=Math.min(3,p.carried);p.carried-=amount;d.stolen=amount;d.state='flee';d.ticks=240;this.emit('drifter_steal',{drifter_id:d.id,amount,carried:p.carried});}}if(p.invuln>0||p.respawn>0)return;for(const s of this.shades.slice().sort((a,b)=>a.id.localeCompare(b.id))){if(s.state==='stunned'||xz(p.pos,s.pos)>T.shade_hit_radius||Math.abs(p.pos[1]-s.pos[1])>T.pickup_height)continue;const lost=Math.floor(p.carried*T.hit_drop_ratio);p.carried-=lost;this.dropMotes(p.pos,lost,`H${this.tick}`);p.flames--;p.invuln=T.invuln_ticks;s.recoil=60;s.state='recoil';this.emit('player_hit',{by:'shade',flames:p.flames,lost});if(p.flames<=0){this.state='lost';this.emit('game_over',{result:'lost',reason:'no_flames'});}break;}}
+  dropMotes(pos,count,prefix){for(let i=0;i<count;i++){const a=this.rng.next()*Math.PI*2,r=1.5+this.rng.next();this.motes.push({id:`${prefix}-${i+1}`,pos:[pos[0]+Math.cos(a)*r,0,pos[2]+Math.sin(a)*r],kind:'dropped',ttl:480,active:true});}}
+  spawn(){if(this.night===3&&this.windEnabled&&this.simTick%1800===0){this.wind.active=true;this.wind.remaining=300;this.wind.dir_deg=Math.floor(this.rng.next()*360);this.emit('wind_started',{dir_deg:this.wind.dir_deg});}if(this.randomMotes&&this.simTick%240===0&&this.motes.filter(m=>m.active).length<30){const p=this.cfg.motePoints[Math.floor(this.rng.next()*this.cfg.motePoints.length)];if(p&&!this.motes.some(m=>m.active&&xz(m.pos,p)<.1))this.motes.push({id:`M${++this.spawnMoteId}`,pos:clone(p),kind:'random',ttl:null,active:true});}if(this.randomShades&&this.simTick>=this.cfg.shadeFirst&&(this.simTick===this.cfg.shadeFirst||(this.simTick-this.cfg.shadeFirst)%this.cfg.shadeEvery===0)&&this.shades.length<this.cfg.shadeMax){const count=this.simTick===this.cfg.shadeFirst&&this.night===1?2:1;for(let i=0;i<count&&this.shades.length<this.cfg.shadeMax;i++){const p=this.cfg.shadePoints[Math.floor(this.rng.next()*this.cfg.shadePoints.length)];if(!p)continue;this.shades.push({id:`S${this.spawnShadeId++}`,pos:clone(p),state:'spawning',stateTicks:1,stun:0,push:0,recoil:0});this.emit('shade_spawned',{id:this.shades.at(-1).id});}}if(this.night>=2&&this.simTick%1200===0&&this.randomDrifters&&this.drifters.filter(d=>d.active).length<2){const p=[this.rng.next()*20-10,0,this.rng.next()*20-10];const d={id:`D${this.spawnDrifterId++}`,pos:p,state:'idle',stolen:0,ticks:0,active:true};this.drifters.push(d);}}
+  checkEnd(){if(this.state!=='playing')return;if(this.player.flames<=0){this.state='lost';this.emit('game_over',{result:'lost',reason:'no_flames'});return;}if(this.lit()===this.lanterns.length){this.state='won';this.score+=Math.floor(this.timeTicks/60)*T.score_time+this.player.flames*T.score_flame;this.emit('game_over',{result:'won',reason:'all_lit'});return;}if(this.timeTicks<=0){this.state='lost';this.emit('game_over',{result:'lost',reason:'dawn'});}}
 }
 
-function args(argv) { const out = {}; for (let i = 0; i < argv.length; i++) { if (!argv[i].startsWith('--')) continue; const k = argv[i].slice(2); out[k] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true; } return out; }
-function main() {
-  const a = args(process.argv.slice(2));
-  if (a.night !== '1' || !a.ticks || !a.out || !a.seed) fail('usage: node game.js --seed <int> --night 1 --ticks <int> --out <file.jsonl> [--scenario file] [--inputs file] [--snapshot-every N]');
-  const ticks = Number(a.ticks), interval = Number(a['snapshot-every'] || 10); if (!Number.isInteger(ticks) || ticks < 0 || !Number.isInteger(interval) || interval < 1) fail('ticks and snapshot-every must be positive integers');
-  const scenario = a.scenario ? parseJsonFile(a.scenario, 'scenario') : {}; const inputs = a.inputs ? validateInputs(parseJsonFile(a.inputs, 'inputs')) : { frames: [] };
-  const game = new Game(a.seed, scenario); const frames = new Map(inputs.frames.map(f => [f.tick, f])); const output = [JSON.stringify(game.snapshot())];
-  for (let k = 0; k < ticks && game.state === 'playing'; k++) { const f = frames.get(k); game.tick++; if (f) { const { tick, ...rest } = f; game.update(rest); } else game.update({}); for (const e of game.events.splice(0)) output.push(JSON.stringify(e)); if (game.tick % interval === 0) output.push(JSON.stringify(game.snapshot())); }
-  if (game.state === 'playing' && game.timeLeft <= 0) { game.state = 'lost'; game.emit('game_over', { result: 'lost', reason: 'dawn' }); for (const e of game.events.splice(0)) output.push(JSON.stringify(e)); }
-  output.push(JSON.stringify({ type: 'end', ticks: game.tick, state: game.state, score: game.score }));
-  fs.mkdirSync(path.dirname(path.resolve(a.out)), { recursive: true }); fs.writeFileSync(a.out, output.join('\n') + '\n');
-}
-if (require.main === module) { try { main(); } catch (e) { if (!process.exitCode) process.exitCode = 2; } }
-module.exports = { Game, defaults, T };
+function argv(a){const o={};for(let i=0;i<a.length;i++){if(a[i].startsWith('--')){const k=a[i].slice(2);o[k]=a[i+1]&&!a[i+1].startsWith('--')?a[++i]:true;}}return o;}
+function main(){const a=argv(process.argv.slice(2));if(!a.seed||!a.night||a.ticks===undefined||!a.out)fail('usage: node game.js --seed <int> --night 1|2|3 --ticks <int> --out <file.jsonl> [--scenario file] [--inputs file] [--snapshot-every N]');const night=Number(a.night),ticks=Number(a.ticks),every=Number(a['snapshot-every']||10);if(!NIGHTS[night]||!Number.isInteger(ticks)||ticks<0||!Number.isInteger(every)||every<1)fail('night, ticks and snapshot-every are invalid');const scenario=a.scenario?parse(a.scenario,'scenario'):{};const inputs=a.inputs?validateInputs(parse(a.inputs,'inputs')):{frames:[]};const g=new Game(a.seed,night,scenario),frames=new Map(inputs.frames.map(f=>[f.tick,f])),out=[JSON.stringify(g.snapshot()),...g.events.splice(0).map(JSON.stringify)];for(let k=0;k<ticks&&g.state==='playing';k++){g.tick++;const f=frames.get(k);g.step(f?Object.fromEntries(Object.entries(f).filter(([key])=>key!=='tick')):{});for(const e of g.events.splice(0))out.push(JSON.stringify(e));if(g.tick%every===0)out.push(JSON.stringify(g.snapshot()));}out.push(JSON.stringify({type:'end',ticks:g.tick,sim_tick:g.simTick,night,state:g.paused?'paused':g.state,score:g.score}));fs.mkdirSync(path.dirname(path.resolve(a.out)),{recursive:true});fs.writeFileSync(a.out,out.join('\n')+'\n');}
+if(require.main===module){try{main();}catch(e){if(!process.exitCode)process.exitCode=2;}}
+module.exports={Game,T,NIGHTS};

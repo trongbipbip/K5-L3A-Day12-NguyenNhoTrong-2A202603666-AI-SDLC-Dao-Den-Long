@@ -13,13 +13,18 @@ Xây game 3D Đảo Đèn Lồng qua 4 phase. Ưu tiên đúng yêu cầu của 
 - Giữ logic game tách khỏi phần hiển thị để chạy được headless.
 - Sau mỗi thay đổi, chạy lệnh kiểm tra được ghi trong README hoặc tài liệu phase.
 
-## Lệnh hiện tại
+## Phase 2 contract v1.1
 
 ```text
-node tools/hello_headless.js
+node --check game.js
+node tests/test_contract.js
+node tests/test_phase2.js
 ```
 
-Lệnh chạy game và Test Contract sẽ được bổ sung sau khi chọn engine ở Phase 1.
+- Headless nhận `--night 1|2|3`, chạy 60 tick/giây và xuất JSONL.
+- Không thay đổi tuning chuẩn trong `game.contract.json`.
+- Khi sửa logic, chạy lại cả test Phase 1 và scenario Phase 2.
+- Scenario mới phải kiểm tra ít nhất một tính năng mới bằng headless.
 
 ## Bảo mật
 

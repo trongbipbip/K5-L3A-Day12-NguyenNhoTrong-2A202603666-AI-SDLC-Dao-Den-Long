@@ -102,13 +102,14 @@ Không commit API key, token hay `.env`. Gửi link repo theo hướng dẫn c�
 - Bằng chứng phải thật: test luôn đạt hay output sửa tay là vi phạm.
 - Nhân vật, bối cảnh là bản gốc của lab; asset bên ngoài chỉ dùng loại CC0/CC-BY/MIT hoặc tự tạo, ghi nguồn trong `CREDITS.md`.
 
-## Phase 1 — chạy game và Test Contract
+## Phase 2 — chạy game và Test Contract v1.1
 
-Phase 1 dùng Node.js, không cần package ngoài. Chạy kiểm tra cú pháp và smoke test:
+Phase 2 dùng Node.js, không cần package ngoài. Chạy kiểm tra hồi quy và tính năng mới:
 
 ```bash
 node --check game.js
-node game.js --seed 12 --night 1 --scenario tests/phase1_scenario.json --inputs tests/phase1_inputs.json --ticks 120 --out docs/proof/phase1-smoke.jsonl
+node tests/test_contract.js
+node tests/test_phase2.js
 ```
 
 Chạy game có giao diện bằng:
@@ -117,15 +118,17 @@ Chạy game có giao diện bằng:
 node server.js
 ```
 
-Sau đó mở `http://localhost:8080`. Điều khiển: WASD để di chuyển, `E` để thắp đèn, `Space` để tỏa sáng, `R` để chơi lại.
+Sau đó mở `http://localhost:8080`. Điều khiển: WASD để di chuyển, `E` để thắp đèn, `Space` để tỏa sáng, `R` để chơi lại. Headless là bản kiểm chứng chuẩn cho cả ba đêm.
 
 Chế độ headless tuân theo `game.contract.json`: mô phỏng 60 tick/giây, snapshot bắt đầu ở tick 0, event ghi ngay khi xảy ra và dòng cuối luôn là `end`. Ví dụ:
 
 ```bash
 node game.js --seed 12 --night 1 --ticks 600 --out output.jsonl
+node game.js --seed 12 --night 2 --ticks 600 --out night2.jsonl
+node game.js --seed 12 --night 3 --ticks 600 --out night3.jsonl
 ```
 
-Các giả định và bằng chứng Phase 1 nằm trong `docs/notes/` và `docs/proof/`.
+Các giả định, acceptance criteria và bằng chứng Phase 1/2 nằm trong `docs/notes/` và `docs/proof/`. Contract hiện tại là v1.1 và các số chuẩn nằm trong `game.contract.json`.
 
 ### Sáng tạo của tôi
 
