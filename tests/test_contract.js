@@ -1,0 +1,14 @@
+const fs = require('fs');
+const cp = require('child_process');
+const path = require('path');
+const root = path.resolve(__dirname, '..');
+const cmd = (out) => `node game.js --seed 12 --night 1 --scenario tests/phase1_scenario.json --inputs tests/phase1_inputs.json --ticks 120 --snapshot-every 10 --out ${out}`;
+const a = path.join(root, 'docs/proof/test-a.jsonl'), b = path.join(root, 'docs/proof/test-b.jsonl');
+cp.execFileSync(process.execPath, ['game.js','--seed','12','--night','1','--scenario','tests/phase1_scenario.json','--inputs','tests/phase1_inputs.json','--ticks','120','--snapshot-every','10','--out',a], {cwd: root});
+cp.execFileSync(process.execPath, ['game.js','--seed','12','--night','1','--scenario','tests/phase1_scenario.json','--inputs','tests/phase1_inputs.json','--ticks','120','--snapshot-every','10','--out',b], {cwd: root});
+const lines = fs.readFileSync(a, 'utf8').trim().split('\n').map(JSON.parse);
+if (lines[0].type !== 'snapshot' || lines[0].tick !== 0) throw new Error('missing tick 0 snapshot');
+if (lines.at(-1).type !== 'end' || lines.at(-1).ticks !== 120) throw new Error('invalid end line');
+if (!lines.some(x => x.type === 'event' && x.name === 'mote_picked' && x.tick === 1)) throw new Error('pickup event mismatch');
+if (fs.readFileSync(a, 'utf8') !== fs.readFileSync(b, 'utf8')) throw new Error('determinism failed');
+console.log('Phase 1 contract tests: PASS');

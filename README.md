@@ -101,3 +101,32 @@ Không commit API key, token hay `.env`. Gửi link repo theo hướng dẫn c�
 - Dùng AI thoải mái; không sao chép repo của người khác.
 - Bằng chứng phải thật: test luôn đạt hay output sửa tay là vi phạm.
 - Nhân vật, bối cảnh là bản gốc của lab; asset bên ngoài chỉ dùng loại CC0/CC-BY/MIT hoặc tự tạo, ghi nguồn trong `CREDITS.md`.
+
+## Phase 1 — chạy game và Test Contract
+
+Phase 1 dùng Node.js, không cần package ngoài. Chạy kiểm tra cú pháp và smoke test:
+
+```bash
+node --check game.js
+node game.js --seed 12 --night 1 --scenario tests/phase1_scenario.json --inputs tests/phase1_inputs.json --ticks 120 --out docs/proof/phase1-smoke.jsonl
+```
+
+Chạy game có giao diện bằng:
+
+```bash
+node server.js
+```
+
+Sau đó mở `http://localhost:8080`. Điều khiển: WASD để di chuyển, `E` để thắp đèn, `Space` để tỏa sáng, `R` để chơi lại.
+
+Chế độ headless tuân theo `game.contract.json`: mô phỏng 60 tick/giây, snapshot bắt đầu ở tick 0, event ghi ngay khi xảy ra và dòng cuối luôn là `end`. Ví dụ:
+
+```bash
+node game.js --seed 12 --night 1 --ticks 600 --out output.jsonl
+```
+
+Các giả định và bằng chứng Phase 1 nằm trong `docs/notes/` và `docs/proof/`.
+
+### Sáng tạo của tôi
+
+Mây có hình ảnh chiếc đèn nhỏ màu vàng, đảo có nền trời tím và đèn chuyển từ tím đen sang vàng cam khi được thắp. Phần thêm chỉ ảnh hưởng giao diện; logic headless và 5 đèn của PRD-0 vẫn giữ nguyên.
