@@ -1,0 +1,20 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node/local caches
+node_modules/
+npm-debug.log*
+
+# Generated evidence and builds
+dist/
+build/
+coverage/
+*.log
