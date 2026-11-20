@@ -102,7 +102,7 @@ Không commit API key, token hay `.env`. Gửi link repo theo hướng dẫn c�
 - Bằng chứng phải thật: test luôn đạt hay output sửa tay là vi phạm.
 - Nhân vật, bối cảnh là bản gốc của lab; asset bên ngoài chỉ dùng loại CC0/CC-BY/MIT hoặc tự tạo, ghi nguồn trong `CREDITS.md`.
 
-## Phase 2 — chạy game và Test Contract v1.1
+## Phase 3 — chạy game và Test Contract v1.2
 
 Phase 2 dùng Node.js, không cần package ngoài. Chạy kiểm tra hồi quy và tính năng mới:
 
@@ -110,6 +110,7 @@ Phase 2 dùng Node.js, không cần package ngoài. Chạy kiểm tra hồi quy 
 node --check game.js
 node tests/test_contract.js
 node tests/test_phase2.js
+node tests/test_phase3.js
 ```
 
 Chạy game có giao diện bằng:
@@ -128,7 +129,7 @@ node game.js --seed 12 --night 2 --ticks 600 --out night2.jsonl
 node game.js --seed 12 --night 3 --ticks 600 --out night3.jsonl
 ```
 
-Các giả định, acceptance criteria và bằng chứng Phase 1/2 nằm trong `docs/notes/` và `docs/proof/`. Contract hiện tại là v1.1 và các số chuẩn nằm trong `game.contract.json`.
+Các giả định, ADR, acceptance criteria và bằng chứng Phase 1/2/3 nằm trong `docs/notes/`, `docs/adr/` và `docs/proof/`. Contract hiện tại là v1.2. Đèn có thể cạn dầu; game chỉ thắng ở bình minh nếu còn ít nhất 60% đèn sáng.
 
 ### Sáng tạo của tôi
 

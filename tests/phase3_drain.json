@@ -1,0 +1,1 @@
+{"player":{"pos":[20,0,20],"carried":0,"flames":3},"random_motes":false,"random_shades":false,"motes":[],"shades":[{"id":"S1","pos":[0,0,2],"state":"wander"}],"lanterns":[{"id":"L1","pos":[0,0,0],"lit":true,"fuel":20,"ever_lit":true},{"id":"L2","pos":[20,0,0]},{"id":"L3","pos":[22,0,0]},{"id":"L4","pos":[24,0,0]},{"id":"L5","pos":[26,0,0]}]}
